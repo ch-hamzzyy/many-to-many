@@ -1,5 +1,5 @@
 <template>
-  <default-field :field="field" :errors="errors">
+  <default-field :field="currentField" :errors="errors">
     <template #field>
       <vue-tags-input
         v-model="tag"
@@ -129,11 +129,11 @@
 </style>
 
 <script>
-import { FormField, HandlesValidationErrors, Errors } from "laravel-nova";
+import { DependentFormField, HandlesValidationErrors, Errors } from "laravel-nova";
 
 import { VueTagsInput, createTag } from "@sipec/vue3-tags-input";
 export default {
-  mixins: [FormField, HandlesValidationErrors],
+  mixins: [DependentFormField, HandlesValidationErrors],
   components: {
     VueTagsInput,
   },
@@ -167,6 +167,15 @@ export default {
     }
     this.getAttachedResources();
   },
+
+  watch: {
+    'field.currentValue'(newValue) {
+      this.getAvailableResources();
+      this.getAttachedResources();
+
+    }
+  },
+
   methods: {
     /*
      * Set the initial, internal value for the field.

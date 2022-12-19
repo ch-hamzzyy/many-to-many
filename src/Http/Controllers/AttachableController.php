@@ -5,11 +5,12 @@ namespace Armincms\Fields\Http\Controllers;
 use Illuminate\Routing\Controller;
 use Armincms\Fields\BelongsToMany;
 use Armincms\Fields\MorphToMany;
+use Laravel\Nova\Fields\SupportsDependentFields;
 use Laravel\Nova\Http\Requests\NovaRequest;
 
 class AttachableController extends Controller
 {
-    use InteractsWithResourceRequest, ResolvesFields;
+    use InteractsWithResourceRequest, ResolvesFields, SupportsDependentFields;
     
     /**
      * List the available related resources for a given resource.
