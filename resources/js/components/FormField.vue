@@ -157,11 +157,10 @@ export default {
         };
     },
     created() {
-        if (!this.field.searchable) {
-            this.getAvailableResources();
-        }
+         this.defaultViaResource = this.viaResource;
+        this.defaultViaResourceId = this.viaResourceId;
 
-         if (!this.field.searchable) {
+        if (!this.field.searchable) {
             this.getAvailableResources();
         }
         this.getAttachedResources();
