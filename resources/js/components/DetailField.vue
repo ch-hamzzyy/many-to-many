@@ -32,6 +32,7 @@
         v-if="field.pivots && display"
         role="dialog"
         @modal-close="handleClose"
+        @click.stop
       >
         <loading-view :loading="loading">
           <card :class="'w-action-fields'">

@@ -52,7 +52,7 @@
                 </template>
             </vue-tags-input>
 
-            <modal :show="true" v-if="processingResource" role="dialog" @modal-close="cancelProcessing">
+            <modal :show="true" v-if="processingResource" role="dialog" @modal-close="cancelProcessing" @click.stop>
                 <form
                     autocomplete="off"
                     class="overflow-hidden rounded-lg bg-white shadow-lg"
@@ -130,7 +130,7 @@ export default {
     components: {
         VueTagsInput,
     },
-    props: ['resourceName', 'resourceId', 'field'],
+    props: ['resourceName', 'resourceId', 'field', 'viaResource', 'viaResourceId'],
     data() {
         return {
             tag: '',
@@ -152,10 +152,16 @@ export default {
             availableResources: [],
             withTrashed: false,
             softDeletes: false,
+            defaultViaResource: '',
+            defaultViaResourceId: '',
         };
     },
     created() {
         if (!this.field.searchable) {
+            this.getAvailableResources();
+        }
+
+         if (!this.field.searchable) {
             this.getAvailableResources();
         }
         this.getAttachedResources();
