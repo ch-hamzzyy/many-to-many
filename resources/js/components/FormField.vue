@@ -18,7 +18,7 @@
                 @before-editing-tag="editingTag"
                 @tags-changed="(tags) => (attachedResources = tags)"
             >
-                <template v-slot:tag-center="props">
+                <template #tag-center="props">
                     <span @click="performEditTag(props)">
                         {{ props.tag.text }}
 
@@ -52,14 +52,14 @@
                 </template>
             </vue-tags-input>
 
-            <modal :show="true" v-if="processingResource" role="dialog" @modal-close="cancelProcessing" @click.stop>
+            <modal v-if="processingResource" :show="true" role="dialog" @modal-close="cancelProcessing" @click.stop>
                 <form
+                    :id="field.attribute"
                     autocomplete="off"
                     class="overflow-hidden rounded-lg bg-white shadow-lg"
                     :class="'w-action-fields'"
-                    @submit.prevent.stop="attachTheResource"
                     :name="field.attribute"
-                    :id="field.attribute"
+                    @submit.prevent.stop="attachTheResource"
                 >
                     <form-heading-field
                         :field="{
@@ -91,8 +91,8 @@
                                     <button
                                         dusk="cancel-attach-button"
                                         type="button"
-                                        @click.prevent="cancelProcessing"
                                         class="btn btn-link dim text-80 ml-auto mr-6 cursor-pointer"
+                                        @click.prevent="cancelProcessing"
                                     >
                                         {{ __('Cancel Attaching') }}
                                     </button>
@@ -119,17 +119,15 @@
     </default-field>
 </template>
 
-<style></style>
-
 <script>
-import { DependentFormField, HandlesValidationErrors, Errors } from 'laravel-nova';
+import { DependentFormField, Errors, HandlesValidationErrors } from 'laravel-nova';
 
 import { VueTagsInput, createTag } from '@sipec/vue3-tags-input';
 export default {
-    mixins: [DependentFormField, HandlesValidationErrors],
     components: {
         VueTagsInput,
     },
+    mixins: [DependentFormField, HandlesValidationErrors],
     props: ['resourceName', 'resourceId', 'field', 'viaResource', 'viaResourceId'],
     data() {
         return {
@@ -156,14 +154,33 @@ export default {
             defaultViaResourceId: '',
         };
     },
-    created() {
-         this.defaultViaResource = this.viaResource;
-        this.defaultViaResourceId = this.viaResourceId;
-
-        if (!this.field.searchable) {
-            this.getAvailableResources();
-        }
-        this.getAttachedResources();
+    computed: {
+        filteredResources() {
+            return this.availableResources.filter((item) => this.tag.length === 0 || item.text.toLowerCase().match(this.tag.toLowerCase()));
+        },
+        /**
+         * Get the form data for the resource attachment.
+         */
+        attachmentFormData() {
+            return _.tap(new FormData(), (formData) => {
+                _.each(this.fields, (field) => {
+                    field.fill(formData);
+                });
+            });
+        },
+        /**
+         * Return the placeholder text for the field.
+         */
+        placeholder() {
+            return this.field.placeholder || this.__('Choose an option');
+        },
+        fillResources() {
+            return this.attachedResources.map((resource) => {
+                delete resource.text;
+                delete resource.tiClasses;
+                return resource;
+            });
+        },
     },
 
     watch: {
@@ -180,13 +197,22 @@ export default {
             deep: true,
         },
     },
+    created() {
+        this.defaultViaResource = this.viaResource;
+        this.defaultViaResourceId = this.viaResourceId;
+
+        if (!this.field.searchable) {
+            this.getAvailableResources();
+        }
+        this.getAttachedResources();
+    },
 
     methods: {
         /*
          * Set the initial, internal value for the field.
          */
         setInitialValue() {
-            this.attachedResources = []; /*this.field.value || ''*/
+            this.attachedResources = []; /* this.field.value || ''*/
         },
         /**
          * Fill the given FormData object with the field's internal value.
@@ -208,10 +234,10 @@ export default {
             }, Nova.config.debounce)();
         },
         appendToForm(object, formData, prefix) {
-            for (var key in object) {
+            for (const key in object) {
                 if (key == 'pivotAccessor') {
                     this.mergeFormData(this.pivots[object[key]], formData, prefix + this.wrap('pivots'));
-                } else if ('object' == typeof object[key]) {
+                } else if (typeof object[key] === 'object') {
                     this.appendToForm(object[key], formData, prefix + this.wrap(key));
                 } else {
                     formData.append(prefix + this.wrap(key), object[key]);
@@ -219,12 +245,12 @@ export default {
             }
         },
         mergeFormData(formData, mergeForm, prefix) {
-            for (var pair of formData.entries()) {
+            for (const pair of formData.entries()) {
                 mergeForm.append(prefix + this.wrap(pair[0]), pair[1]);
             }
         },
         wrap(key) {
-            return key.replace(/^([^\[]+)/, (matches) => '[' + matches + ']');
+            return key.replace(/^([^\[]+)/, (matches) => `[${matches}]`);
         },
         /**
          * Update the field's internal value.
@@ -263,9 +289,9 @@ export default {
                 await this.resourceProcessor();
 
                 console.log('attached the resource:', this.processingResource.text);
-                var index = await this.attachCallback();
+                let index = await this.attachCallback();
                 await this.resetCallbak();
-                index = typeof index == 'number' ? index : this.attachedResources.length - 1;
+                index = typeof index === 'number' ? index : this.attachedResources.length - 1;
                 this.pivots[index] = this.attachmentFormData;
 
                 this.attachedResources[index] = _.tap(this.attachedResources[index], (tag) => {
@@ -385,42 +411,12 @@ export default {
                     this.fields = data;
                     _.each(this.fields, (field) => {
                         field.fill = () => '';
-                        var pivots = this.pivots[resource.pivotAccessor] ? this.pivots[resource.pivotAccessor] : new FormData();
+                        const pivots = this.pivots[resource.pivotAccessor] ? this.pivots[resource.pivotAccessor] : new FormData();
                         if (pivots.has(field.attribute)) {
                             field.value = pivots.getAll(field.attribute);
                         }
                     });
                 });
-        },
-    },
-    computed: {
-        filteredResources() {
-            return this.availableResources.filter((item) => {
-                return this.tag.length === 0 || item.text.toLowerCase().match(this.tag.toLowerCase());
-            });
-        },
-        /**
-         * Get the form data for the resource attachment.
-         */
-        attachmentFormData() {
-            return _.tap(new FormData(), (formData) => {
-                _.each(this.fields, (field) => {
-                    field.fill(formData);
-                });
-            });
-        },
-        /**
-         * Return the placeholder text for the field.
-         */
-        placeholder() {
-            return this.field.placeholder || this.__('Choose an option');
-        },
-        fillResources() {
-            return this.attachedResources.map((resource) => {
-                delete resource.text;
-                delete resource.tiClasses;
-                return resource;
-            });
         },
     },
 };
