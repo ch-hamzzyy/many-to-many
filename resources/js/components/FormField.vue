@@ -96,7 +96,6 @@
                                     >
                                         {{ __('Cancel Attaching') }}
                                     </button>
-
                                     <button
                                         ref="attachButton"
                                         dusk="confirm-attach-button"
@@ -150,9 +149,7 @@ export default {
             availableResources: [],
             withTrashed: false,
             softDeletes: false,
-            defaultViaResource: '',
-            defaultViaResourceId: '',
-            isCreating: true,
+            isCreatingRequest: true,
         };
     },
     computed: {
@@ -198,29 +195,30 @@ export default {
             deep: true,
         },
     },
-    created() {
-        this.defaultViaResource = this.viaResource;
-        this.defaultViaResourceId = this.viaResourceId;
-
+    async created() {
         if (!this.field.searchable) {
-            this.getAvailableResources();
+            await this.getAvailableResources();
         }
-        this.getAttachedResources();
-    },
 
-     mounted() {
-        this.setInitialValue();
-     },
-    methods: {
-        /*
-         * Set the initial, internal value for the field.
-         */
-        setInitialValue() {
-
-            if (this.isCreating) {
-                this.attachedResources = []; /* this.field.value || ''*/
+        if (this.isCreatingRequest && this.viaResource == this.currentField.resourceName && this.viaResourceId) {
+            await this.getAttachedResources();
+            console.log('filtered resources: ', this.filteredResources);
+            console.log(this.viaResourceId)
+            const resource = this.filteredResources.filter((resource) => resource.id === this.viaResourceId)[0];
+            console.log('resource exists: ', resource);
+            if (resource) {
+                const tag = {
+                    id: this.viaResourceId,
+                    text: resource.text,
+                };
+                console.log('attaching', tag);
+                this.attachedResources.push(tag);
             }
-        },
+        } else {
+            this.getAttachedResources();
+        }
+    },
+    methods: {
         /**
          * Fill the given FormData object with the field's internal value.
          */
@@ -266,6 +264,9 @@ export default {
             this.attachedResources = value;
         },
         addingTag(item) {
+            console.log('adding item:', item);
+            console.log('item tag:', item.tag);
+            console.log('item addTag:', item.addTag);
             console.log('adding tag:', item.tag.text);
             this.processTheResource(item.tag, item.addTag);
         },
@@ -340,14 +341,24 @@ export default {
         },
         async processTheResource(resource, processor) {
             this.validationErrors = new Errors();
-            this.isCreating = !resource.attached;
             this.loading = true;
             this.processingResource = resource;
             this.resourceProcessor = processor;
             this.field.pivots && (await this.getPivotFields(resource));
-            this.processingModal = this.fields.length > 0 ? true : this.attachTheResource();
             this.loading = false;
+            this.processingModal = this.attachResourceAutomatically() ? this.triggerAttachResources() : true;
             console.log('processing resource:', this.processingResource.text);
+        },
+        attachResourceAutomatically()
+        {
+            console.log('attach resource auto:');
+            console.log(this.fields.length === 0 || this.fields.filter((field) => field.component === 'hidden-component')?.length <= 1);
+            return this.fields.length === 0 || this.fields.filter((field) => field.component === 'hidden-component')?.length <= 1;
+        },
+        triggerAttachResources() {
+            this.$nextTick(() => {
+                this.attachTheResource();
+            });
         },
         triggerLoading() {
             this.loading = !this.loading;
@@ -362,8 +373,8 @@ export default {
         /**
          * Get all of the available resources for the current search / trashed state.
          */
-        getAvailableResources() {
-            Nova.request()
+        async getAvailableResources() {
+            await Nova.request()
                 .get(`/nova-api/armincms/${this.resourceName}/nonattachable/${this.field.resourceName}`, {
                     params: {
                         search: this.search,
@@ -380,8 +391,8 @@ export default {
         /**
          * Get all of the available resources for the current search / trashed state.
          */
-        getAttachedResources() {
-            Nova.request()
+        async getAttachedResources() {
+            await Nova.request()
                 .get(`/nova-api/armincms/${this.resourceName}/nonattached/${this.field.resourceName}`, {
                     params: {
                         field: this.field.attribute,
@@ -428,3 +439,4 @@ export default {
     },
 };
 </script>
+a
