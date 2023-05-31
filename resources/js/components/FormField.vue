@@ -152,6 +152,7 @@ export default {
             softDeletes: false,
             defaultViaResource: '',
             defaultViaResourceId: '',
+            isCreating: true,
         };
     },
     computed: {
@@ -207,12 +208,18 @@ export default {
         this.getAttachedResources();
     },
 
+     mounted() {
+        this.setInitialValue();
+     },
     methods: {
         /*
          * Set the initial, internal value for the field.
          */
         setInitialValue() {
-            this.attachedResources = []; /* this.field.value || ''*/
+
+            if (this.isCreating) {
+                this.attachedResources = []; /* this.field.value || ''*/
+            }
         },
         /**
          * Fill the given FormData object with the field's internal value.
@@ -333,7 +340,7 @@ export default {
         },
         async processTheResource(resource, processor) {
             this.validationErrors = new Errors();
-
+            this.isCreating = !resource.attached;
             this.loading = true;
             this.processingResource = resource;
             this.resourceProcessor = processor;
