@@ -18,48 +18,48 @@
                 @before-editing-tag="editingTag"
                 @tags-changed="(tags) => (attachedResources = tags)"
             >
-                <template v-slot:tag-center="props">
+                <template #tag-center="props">
                     <span @click="performEditTag(props)">
                         {{ props.tag.text }}
 
                         <!-- <svg
-              v-if="field.pivots"
-              xmlns="http://www.w3.org/2000/svg"
-              xmlns:xlink="http://www.w3.org/1999/xlink"
-              viewBox="0 0 347 347"
-              width="15px"
-              style="cursor: pointer"
+            v-if="field.pivots"
+            xmlns="http://www.w3.org/2000/svg"
+            xmlns:xlink="http://www.w3.org/1999/xlink"
+            viewBox="0 0 347 347"
+            width="15px"
+            style="cursor: pointer"
             >
-              <polygon
+            <polygon
                 fill="#fff"
                 points="284.212,0 231.967,51.722 295.706,115.461 347.429,63.216"
-              />
-              <polygon
+            />
+            <polygon
                 fill="#fff"
                 points="0,347.429 85.682,319.216 28.212,261.747"
-              />
+            />
 
-              <rect
+            <rect
                 fill="#fff"
                 x="115.322"
                 y="56.259"
                 width="90.14"
                 height="261.554"
                 transform="matrix(-0.7071 -0.7071 0.7071 -0.7071 141.551 432.7058)"
-              />
+            />
             </svg> -->
                     </span>
                 </template>
             </vue-tags-input>
 
-            <modal :show="true" v-if="processingResource" role="dialog" @modal-close="cancelProcessing">
+            <modal v-if="processingResource" :show="true" role="dialog" @modal-close="cancelProcessing" @click.stop>
                 <form
+                    :id="field.attribute"
                     autocomplete="off"
                     class="overflow-hidden rounded-lg bg-white shadow-lg"
                     :class="'w-action-fields'"
-                    @submit.prevent.stop="attachTheResource"
                     :name="field.attribute"
-                    :id="field.attribute"
+                    @submit.prevent.stop="attachTheResource"
                 >
                     <form-heading-field
                         :field="{
@@ -91,12 +91,11 @@
                                     <button
                                         dusk="cancel-attach-button"
                                         type="button"
-                                        @click.prevent="cancelProcessing"
                                         class="btn btn-link dim text-80 ml-auto mr-6 cursor-pointer"
+                                        @click.prevent="cancelProcessing"
                                     >
                                         {{ __('Cancel Attaching') }}
                                     </button>
-
                                     <button
                                         ref="attachButton"
                                         dusk="confirm-attach-button"
@@ -119,18 +118,16 @@
     </default-field>
 </template>
 
-<style></style>
-
 <script>
-import { DependentFormField, HandlesValidationErrors, Errors } from 'laravel-nova';
+import { DependentFormField, Errors, HandlesValidationErrors } from 'laravel-nova';
 
 import { VueTagsInput, createTag } from '@sipec/vue3-tags-input';
 export default {
-    mixins: [DependentFormField, HandlesValidationErrors],
     components: {
         VueTagsInput,
     },
-    props: ['resourceName', 'resourceId', 'field'],
+    mixins: [DependentFormField, HandlesValidationErrors],
+    props: ['resourceName', 'resourceId', 'field', 'viaResource', 'viaResourceId'],
     data() {
         return {
             tag: '',
@@ -154,11 +151,33 @@ export default {
             softDeletes: false,
         };
     },
-    created() {
-        if (!this.field.searchable) {
-            this.getAvailableResources();
-        }
-        this.getAttachedResources();
+    computed: {
+        filteredResources() {
+            return this.availableResources.filter((item) => this.tag.length === 0 || item.text.toLowerCase().match(this.tag.toLowerCase()));
+        },
+        /**
+         * Get the form data for the resource attachment.
+         */
+        attachmentFormData() {
+            return _.tap(new FormData(), (formData) => {
+                _.each(this.fields, (field) => {
+                    field.fill(formData);
+                });
+            });
+        },
+        /**
+         * Return the placeholder text for the field.
+         */
+        placeholder() {
+            return this.field.placeholder || this.__('Choose an option');
+        },
+        fillResources() {
+            return this.attachedResources.map((resource) => {
+                delete resource.text;
+                delete resource.tiClasses;
+                return resource;
+            });
+        },
     },
 
     watch: {
@@ -175,19 +194,33 @@ export default {
             deep: true,
         },
     },
+    async created() {
+        if (!this.field.searchable) {
+            await this.getAvailableResources();
+        }
 
+        if (this.editMode === 'create' && this.viaResource === this.currentField.resourceName && this.viaResourceId) {
+            await this.getAttachedResources();
+            const resource = this.filteredResources.find((resource) => resource.id === this.viaResourceId);
+            if (resource) {
+                const tag = {
+                    id: this.viaResourceId,
+                    text: resource.text,
+                    attached: false,
+                    pivotAccessor: 0,
+                };
+                this.attachedResources.push(this.createTag(tag));
+            }
+        } else {
+            this.getAttachedResources();
+        }
+    },
     methods: {
-        /*
-         * Set the initial, internal value for the field.
-         */
-        setInitialValue() {
-            this.attachedResources = []; /*this.field.value || ''*/
-        },
         /**
          * Fill the given FormData object with the field's internal value.
          */
         fill(formData) {
-            if (this.fillResources.length == 0) {
+            if (this.fillResources.length === 0) {
                 formData.append(this.field.attribute, this.fillResources);
             } else {
                 this.appendToForm(this.fillResources, formData, this.field.attribute);
@@ -197,16 +230,16 @@ export default {
             if (!this.field.searchable) return;
             this.search = search;
             _.debounce(() => {
-                if (this.search == search && this.search.length > 0) {
+                if (this.search === search && this.search.length > 0) {
                     this.getAvailableResources();
                 }
             }, Nova.config.debounce)();
         },
         appendToForm(object, formData, prefix) {
-            for (var key in object) {
-                if (key == 'pivotAccessor') {
+            for (const key in object) {
+                if (key === 'pivotAccessor') {
                     this.mergeFormData(this.pivots[object[key]], formData, prefix + this.wrap('pivots'));
-                } else if ('object' == typeof object[key]) {
+                } else if (typeof object[key] === 'object') {
                     this.appendToForm(object[key], formData, prefix + this.wrap(key));
                 } else {
                     formData.append(prefix + this.wrap(key), object[key]);
@@ -214,12 +247,12 @@ export default {
             }
         },
         mergeFormData(formData, mergeForm, prefix) {
-            for (var pair of formData.entries()) {
+            for (const pair of formData.entries()) {
                 mergeForm.append(prefix + this.wrap(pair[0]), pair[1]);
             }
         },
         wrap(key) {
-            return key.replace(/^([^\[]+)/, (matches) => '[' + matches + ']');
+            return key.replace(/^([^\[]+)/, (matches) => `[${matches}]`);
         },
         /**
          * Update the field's internal value.
@@ -228,11 +261,9 @@ export default {
             this.attachedResources = value;
         },
         addingTag(item) {
-            console.log('adding tag:', item.tag.text);
             this.processTheResource(item.tag, item.addTag);
         },
         editingTag(item) {
-            console.log('editing tag:', item.tag.text);
             this.processTheResource(item.tag, item.editTag);
         },
         // The duplicate function to recreate the default behaviour, would look like this:
@@ -257,10 +288,9 @@ export default {
             if (await this.validatePivotFields(this.processingResource)) {
                 await this.resourceProcessor();
 
-                console.log('attached the resource:', this.processingResource.text);
-                var index = await this.attachCallback();
+                let index = await this.attachCallback();
                 await this.resetCallbak();
-                index = typeof index == 'number' ? index : this.attachedResources.length - 1;
+                index = typeof index === 'number' ? index : this.attachedResources.length - 1;
                 this.pivots[index] = this.attachmentFormData;
 
                 this.attachedResources[index] = _.tap(this.attachedResources[index], (tag) => {
@@ -276,7 +306,7 @@ export default {
                 try {
                     await this.validateRequest(resource);
                 } catch (error) {
-                    if (error.response.status == 422) {
+                    if (error.response.status === 422) {
                         this.validationErrors = new Errors(error.response.data.errors);
                         Nova.error(this.__('There was a problem submitting the form.'));
                     }
@@ -285,7 +315,7 @@ export default {
             }
             return true;
         },
-        validateRequest(resource) {
+        async validateRequest(resource) {
             return Nova.request().post(
                 `/nova-api/armincms/${this.resourceName}/pivots-validate/${this.field.resourceName}`,
                 this.attachmentFormData,
@@ -302,21 +332,27 @@ export default {
         },
         async processTheResource(resource, processor) {
             this.validationErrors = new Errors();
-
             this.loading = true;
             this.processingResource = resource;
             this.resourceProcessor = processor;
             this.field.pivots && (await this.getPivotFields(resource));
-            this.processingModal = this.fields.length > 0 ? true : this.attachTheResource();
             this.loading = false;
-            console.log('processing resource:', this.processingResource.text);
+            this.processingModal = this.attachResourceAutomatically() ? this.triggerAttachResources() : true;
+        },
+        attachResourceAutomatically()
+        {
+            return this.fields.length === 0 || this.fields.filter((field) => field.component === 'hidden-component')?.length <= 1;
+        },
+        triggerAttachResources() {
+            this.$nextTick(() => {
+                this.attachTheResource();
+            });
         },
         triggerLoading() {
             this.loading = !this.loading;
         },
         cancelProcessing() {
             this.processingModal = false;
-            console.log('canceled attachment:', this.processingResource.text);
             this.cancelCallback();
             this.$emit('close');
             this.resetCallbak();
@@ -324,8 +360,8 @@ export default {
         /**
          * Get all of the available resources for the current search / trashed state.
          */
-        getAvailableResources() {
-            Nova.request()
+        async getAvailableResources() {
+            await Nova.request()
                 .get(`/nova-api/armincms/${this.resourceName}/nonattachable/${this.field.resourceName}`, {
                     params: {
                         search: this.search,
@@ -342,8 +378,8 @@ export default {
         /**
          * Get all of the available resources for the current search / trashed state.
          */
-        getAttachedResources() {
-            Nova.request()
+        async getAttachedResources() {
+            await Nova.request()
                 .get(`/nova-api/armincms/${this.resourceName}/nonattached/${this.field.resourceName}`, {
                     params: {
                         field: this.field.attribute,
@@ -380,42 +416,12 @@ export default {
                     this.fields = data;
                     _.each(this.fields, (field) => {
                         field.fill = () => '';
-                        var pivots = this.pivots[resource.pivotAccessor] ? this.pivots[resource.pivotAccessor] : new FormData();
+                        const pivots = this.pivots[resource.pivotAccessor] ? this.pivots[resource.pivotAccessor] : new FormData();
                         if (pivots.has(field.attribute)) {
                             field.value = pivots.getAll(field.attribute);
                         }
                     });
                 });
-        },
-    },
-    computed: {
-        filteredResources() {
-            return this.availableResources.filter((item) => {
-                return this.tag.length === 0 || item.text.toLowerCase().match(this.tag.toLowerCase());
-            });
-        },
-        /**
-         * Get the form data for the resource attachment.
-         */
-        attachmentFormData() {
-            return _.tap(new FormData(), (formData) => {
-                _.each(this.fields, (field) => {
-                    field.fill(formData);
-                });
-            });
-        },
-        /**
-         * Return the placeholder text for the field.
-         */
-        placeholder() {
-            return this.field.placeholder || this.__('Choose an option');
-        },
-        fillResources() {
-            return this.attachedResources.map((resource) => {
-                delete resource.text;
-                delete resource.tiClasses;
-                return resource;
-            });
         },
     },
 };
