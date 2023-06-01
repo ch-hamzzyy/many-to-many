@@ -23,30 +23,30 @@
                         {{ props.tag.text }}
 
                         <!-- <svg
-              v-if="field.pivots"
-              xmlns="http://www.w3.org/2000/svg"
-              xmlns:xlink="http://www.w3.org/1999/xlink"
-              viewBox="0 0 347 347"
-              width="15px"
-              style="cursor: pointer"
+            v-if="field.pivots"
+            xmlns="http://www.w3.org/2000/svg"
+            xmlns:xlink="http://www.w3.org/1999/xlink"
+            viewBox="0 0 347 347"
+            width="15px"
+            style="cursor: pointer"
             >
-              <polygon
+            <polygon
                 fill="#fff"
                 points="284.212,0 231.967,51.722 295.706,115.461 347.429,63.216"
-              />
-              <polygon
+            />
+            <polygon
                 fill="#fff"
                 points="0,347.429 85.682,319.216 28.212,261.747"
-              />
+            />
 
-              <rect
+            <rect
                 fill="#fff"
                 x="115.322"
                 y="56.259"
                 width="90.14"
                 height="261.554"
                 transform="matrix(-0.7071 -0.7071 0.7071 -0.7071 141.551 432.7058)"
-              />
+            />
             </svg> -->
                     </span>
                 </template>
@@ -96,7 +96,6 @@
                                     >
                                         {{ __('Cancel Attaching') }}
                                     </button>
-
                                     <button
                                         ref="attachButton"
                                         dusk="confirm-attach-button"
@@ -150,9 +149,6 @@ export default {
             availableResources: [],
             withTrashed: false,
             softDeletes: false,
-            defaultViaResource: '',
-            defaultViaResourceId: '',
-            isCreating: true,
         };
     },
     computed: {
@@ -198,34 +194,33 @@ export default {
             deep: true,
         },
     },
-    created() {
-        this.defaultViaResource = this.viaResource;
-        this.defaultViaResourceId = this.viaResourceId;
-
+    async created() {
         if (!this.field.searchable) {
-            this.getAvailableResources();
+            await this.getAvailableResources();
         }
-        this.getAttachedResources();
-    },
 
-     mounted() {
-        this.setInitialValue();
-     },
-    methods: {
-        /*
-         * Set the initial, internal value for the field.
-         */
-        setInitialValue() {
-
-            if (this.isCreating) {
-                this.attachedResources = []; /* this.field.value || ''*/
+        if (this.editMode === 'create' && this.viaResource === this.currentField.resourceName && this.viaResourceId) {
+            await this.getAttachedResources();
+            const resource = this.filteredResources.find((resource) => resource.id === this.viaResourceId);
+            if (resource) {
+                const tag = {
+                    id: this.viaResourceId,
+                    text: resource.text,
+                    attached: false,
+                    pivotAccessor: 0,
+                };
+                this.attachedResources.push(this.createTag(tag));
             }
-        },
+        } else {
+            this.getAttachedResources();
+        }
+    },
+    methods: {
         /**
          * Fill the given FormData object with the field's internal value.
          */
         fill(formData) {
-            if (this.fillResources.length == 0) {
+            if (this.fillResources.length === 0) {
                 formData.append(this.field.attribute, this.fillResources);
             } else {
                 this.appendToForm(this.fillResources, formData, this.field.attribute);
@@ -235,14 +230,14 @@ export default {
             if (!this.field.searchable) return;
             this.search = search;
             _.debounce(() => {
-                if (this.search == search && this.search.length > 0) {
+                if (this.search === search && this.search.length > 0) {
                     this.getAvailableResources();
                 }
             }, Nova.config.debounce)();
         },
         appendToForm(object, formData, prefix) {
             for (const key in object) {
-                if (key == 'pivotAccessor') {
+                if (key === 'pivotAccessor') {
                     this.mergeFormData(this.pivots[object[key]], formData, prefix + this.wrap('pivots'));
                 } else if (typeof object[key] === 'object') {
                     this.appendToForm(object[key], formData, prefix + this.wrap(key));
@@ -266,11 +261,9 @@ export default {
             this.attachedResources = value;
         },
         addingTag(item) {
-            console.log('adding tag:', item.tag.text);
             this.processTheResource(item.tag, item.addTag);
         },
         editingTag(item) {
-            console.log('editing tag:', item.tag.text);
             this.processTheResource(item.tag, item.editTag);
         },
         // The duplicate function to recreate the default behaviour, would look like this:
@@ -295,7 +288,6 @@ export default {
             if (await this.validatePivotFields(this.processingResource)) {
                 await this.resourceProcessor();
 
-                console.log('attached the resource:', this.processingResource.text);
                 let index = await this.attachCallback();
                 await this.resetCallbak();
                 index = typeof index === 'number' ? index : this.attachedResources.length - 1;
@@ -314,7 +306,7 @@ export default {
                 try {
                     await this.validateRequest(resource);
                 } catch (error) {
-                    if (error.response.status == 422) {
+                    if (error.response.status === 422) {
                         this.validationErrors = new Errors(error.response.data.errors);
                         Nova.error(this.__('There was a problem submitting the form.'));
                     }
@@ -323,7 +315,7 @@ export default {
             }
             return true;
         },
-        validateRequest(resource) {
+        async validateRequest(resource) {
             return Nova.request().post(
                 `/nova-api/armincms/${this.resourceName}/pivots-validate/${this.field.resourceName}`,
                 this.attachmentFormData,
@@ -340,21 +332,27 @@ export default {
         },
         async processTheResource(resource, processor) {
             this.validationErrors = new Errors();
-            this.isCreating = !resource.attached;
             this.loading = true;
             this.processingResource = resource;
             this.resourceProcessor = processor;
             this.field.pivots && (await this.getPivotFields(resource));
-            this.processingModal = this.fields.length > 0 ? true : this.attachTheResource();
             this.loading = false;
-            console.log('processing resource:', this.processingResource.text);
+            this.processingModal = this.attachResourceAutomatically() ? this.triggerAttachResources() : true;
+        },
+        attachResourceAutomatically()
+        {
+            return this.fields.length === 0 || this.fields.filter((field) => field.component === 'hidden-component')?.length <= 1;
+        },
+        triggerAttachResources() {
+            this.$nextTick(() => {
+                this.attachTheResource();
+            });
         },
         triggerLoading() {
             this.loading = !this.loading;
         },
         cancelProcessing() {
             this.processingModal = false;
-            console.log('canceled attachment:', this.processingResource.text);
             this.cancelCallback();
             this.$emit('close');
             this.resetCallbak();
@@ -362,8 +360,8 @@ export default {
         /**
          * Get all of the available resources for the current search / trashed state.
          */
-        getAvailableResources() {
-            Nova.request()
+        async getAvailableResources() {
+            await Nova.request()
                 .get(`/nova-api/armincms/${this.resourceName}/nonattachable/${this.field.resourceName}`, {
                     params: {
                         search: this.search,
@@ -380,8 +378,8 @@ export default {
         /**
          * Get all of the available resources for the current search / trashed state.
          */
-        getAttachedResources() {
-            Nova.request()
+        async getAttachedResources() {
+            await Nova.request()
                 .get(`/nova-api/armincms/${this.resourceName}/nonattached/${this.field.resourceName}`, {
                     params: {
                         field: this.field.attribute,
